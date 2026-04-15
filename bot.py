@@ -208,7 +208,7 @@ def main():
     # Render assigns a PORT env var; we must listen on it.
     # WEBHOOK_URL must be set in Render's Environment variables, e.g.:
     #   https://your-app-name.onrender.com
-    PORT = int(os.getenv("PORT", 8443))
+    PORT = int(os.getenv("PORT", 10000))
 
     print(f"Starting webhook on port {PORT} ...")
     app.run_webhook(
