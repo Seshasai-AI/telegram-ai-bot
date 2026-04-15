@@ -18,7 +18,7 @@ load_dotenv()
 BOT_TOKEN      = os.getenv("BOT_TOKEN")
 GROQ_API_KEY   = os.getenv("GROQ_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
-WEBHOOK_URL    = os.getenv("WEBHOOK_URL")   # e.g. https://your-app.onrender.com
+WEBHOOK_URL    = os.getenv("WEBHOOK_URL")  # e.g. https://your-app-name.onrender.com
 
 groq_client   = Groq(api_key=GROQ_API_KEY)
 tavily_client = TavilyClient(api_key=TAVILY_API_KEY)
@@ -49,7 +49,7 @@ def get_web_results(query):
             search_depth="advanced"
         )
         context  = f"=== DIRECT ANSWER ===\n{direct}\n\n"
-        context += f"=== WEB SOURCES ===\n"
+        context += "=== WEB SOURCES ===\n"
         for i, r in enumerate(results["results"], 1):
             context += (
                 f"Source {i}: {r['title']}\n"
@@ -91,8 +91,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"Hello {name}! I am your Smart AI Assistant.\n\n"
         f"Powered by:\n"
-        f"- Tavily → live web search\n"
-        f"- Llama 3.3 → fast accurate answers\n\n"
+        f"- Tavily -> live web search\n"
+        f"- Llama 3.3 -> fast accurate answers\n\n"
         f"Ask me anything!\n\n"
         f"Commands:\n"
         f"/start  - Welcome\n"
@@ -105,40 +105,29 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "How I work:\n\n"
         "Live questions (scores, news, weather)\n"
-        "→ I search web first then give accurate answer\n\n"
+        "-> I search web first then give accurate answer\n\n"
         "General questions\n"
-        "→ I answer from my AI knowledge\n\n"
+        "-> I answer from my AI knowledge\n\n"
         "Commands:\n"
-        "/search your question → force web search\n"
-        "/clear → reset conversation memory"
+        "/search your question -> force web search\n"
+        "/clear -> reset conversation memory"
     )
 
 async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_history[user_id].clear()
-    await update.message.reply_text(
-        "Memory cleared! Fresh start."
-    )
+    await update.message.reply_text("Memory cleared! Fresh start.")
 
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = " ".join(context.args)
     if not query:
-        await update.message.reply_text(
-            "Usage: /search IPL 2026 points table"
-        )
+        await update.message.reply_text("Usage: /search IPL 2026 points table")
         return
-    await context.bot.send_chat_action(
-        chat_id=update.effective_chat.id,
-        action="typing"
-    )
-    await update.message.reply_text(
-        f"Searching web for: {query}..."
-    )
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    await update.message.reply_text(f"Searching web for: {query}...")
     search_context = get_web_results(query)
     if not search_context:
-        await update.message.reply_text(
-            "Could not fetch results. Try again!"
-        )
+        await update.message.reply_text("Could not fetch results. Try again!")
         return
     try:
         reply = ask_groq(
@@ -149,73 +138,50 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(reply)
     except Exception as e:
         logging.error(e)
-        await update.message.reply_text(
-            "Something went wrong. Try again!"
-        )
+        await update.message.reply_text("Something went wrong. Try again!")
 
 async def ai_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id   = update.effective_user.id
     user_name = update.effective_user.first_name
     user_text = update.message.text
-
-    await context.bot.send_chat_action(
-        chat_id=update.effective_chat.id,
-        action="typing"
-    )
-
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     search_context = ""
     if any(w in user_text.lower() for w in LIVE_KEYWORDS):
-        await update.message.reply_text(
-            "Searching web for latest info..."
-        )
+        await update.message.reply_text("Searching web for latest info...")
         search_context = get_web_results(user_text)
-
-    chat_history[user_id].append({
-        "role": "user",
-        "content": user_text
-    })
+    chat_history[user_id].append({"role": "user", "content": user_text})
     history = chat_history[user_id][-10:]
-
     try:
         reply = ask_groq(user_name, history, search_context)
-        chat_history[user_id].append({
-            "role": "assistant",
-            "content": reply
-        })
+        chat_history[user_id].append({"role": "assistant", "content": reply})
         await update.message.reply_text(reply)
-
     except Exception as e:
         logging.error(f"Error: {e}")
-        await update.message.reply_text(
-            "Sorry something went wrong. Please try again!"
-        )
+        await update.message.reply_text("Sorry something went wrong. Please try again!")
 
 def main():
     print("Smart AI Bot starting...")
     print(f"Today: {TODAY}")
     print("Groq + Tavily active!")
 
+    PORT = int(os.getenv("PORT", 10000))
+
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start",  start))
     app.add_handler(CommandHandler("help",   help_command))
     app.add_handler(CommandHandler("clear",  clear_command))
     app.add_handler(CommandHandler("search", search_command))
-    app.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND, ai_reply
-    ))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_reply))
 
-    # ── WEBHOOK MODE (Render) ─────────────────────────────────────────────────
-    # Render assigns a PORT env var; we must listen on it.
-    # WEBHOOK_URL must be set in Render's Environment variables, e.g.:
-    #   https://your-app-name.onrender.com
-    PORT = int(os.getenv("PORT", 10000))
+    print(f"Webhook mode -> port {PORT}")
+    print(f"Webhook URL  -> {WEBHOOK_URL}/{BOT_TOKEN}")
 
-    print(f"Starting webhook on port {PORT} ...")
     app.run_webhook(
-        listen="0.0.0.0",       # listen on all interfaces
-        port=PORT,              # Render's assigned port
-        url_path=BOT_TOKEN,     # secret path so only Telegram can hit it
-        webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}"  # full public URL
+        listen="0.0.0.0",
+        port=PORT,
+        url_path=BOT_TOKEN,
+        webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}",
+        drop_pending_updates=True
     )
 
 if __name__ == "__main__":
