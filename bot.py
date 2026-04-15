@@ -18,6 +18,7 @@ load_dotenv()
 BOT_TOKEN      = os.getenv("BOT_TOKEN")
 GROQ_API_KEY   = os.getenv("GROQ_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+WEBHOOK_URL    = os.getenv("WEBHOOK_URL")   # e.g. https://your-app.onrender.com
 
 groq_client   = Groq(api_key=GROQ_API_KEY)
 tavily_client = TavilyClient(api_key=TAVILY_API_KEY)
@@ -193,6 +194,7 @@ def main():
     print("Smart AI Bot starting...")
     print(f"Today: {TODAY}")
     print("Groq + Tavily active!")
+
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start",  start))
     app.add_handler(CommandHandler("help",   help_command))
@@ -201,8 +203,20 @@ def main():
     app.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND, ai_reply
     ))
-    print("Bot is running! Press Ctrl+C to stop.")
-    app.run_polling()
+
+    # ── WEBHOOK MODE (Render) ─────────────────────────────────────────────────
+    # Render assigns a PORT env var; we must listen on it.
+    # WEBHOOK_URL must be set in Render's Environment variables, e.g.:
+    #   https://your-app-name.onrender.com
+    PORT = int(os.getenv("PORT", 8443))
+
+    print(f"Starting webhook on port {PORT} ...")
+    app.run_webhook(
+        listen="0.0.0.0",       # listen on all interfaces
+        port=PORT,              # Render's assigned port
+        url_path=BOT_TOKEN,     # secret path so only Telegram can hit it
+        webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}"  # full public URL
+    )
 
 if __name__ == "__main__":
     main()
