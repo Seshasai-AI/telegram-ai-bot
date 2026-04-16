@@ -15,10 +15,12 @@ from collections import defaultdict
 from datetime import date
 
 load_dotenv()
+
 BOT_TOKEN      = os.getenv("BOT_TOKEN")
 GROQ_API_KEY   = os.getenv("GROQ_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
-WEBHOOK_URL    = os.getenv("WEBHOOK_URL")  # e.g. https://your-app-name.onrender.com
+WEBHOOK_URL    = os.getenv("WEBHOOK_URL")   # e.g. https://your-app.onrender.com
+PORT           = int(os.getenv("PORT", 10000))
 
 groq_client   = Groq(api_key=GROQ_API_KEY)
 tavily_client = TavilyClient(api_key=TAVILY_API_KEY)
@@ -40,6 +42,7 @@ LIVE_KEYWORDS = [
     "who won", "what happened", "points table"
 ]
 
+
 def get_web_results(query):
     try:
         direct = tavily_client.qna_search(query=query)
@@ -60,6 +63,7 @@ def get_web_results(query):
     except Exception as e:
         logging.error(f"Tavily error: {e}")
         return ""
+
 
 def ask_groq(user_name, history, extra=""):
     response = groq_client.chat.completions.create(
@@ -86,6 +90,7 @@ def ask_groq(user_name, history, extra=""):
     )
     return response.choices[0].message.content
 
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = update.effective_user.first_name
     await update.message.reply_text(
@@ -101,6 +106,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"/search - Force web search"
     )
 
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "How I work:\n\n"
@@ -113,17 +119,21 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/clear -> reset conversation memory"
     )
 
+
 async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_history[user_id].clear()
     await update.message.reply_text("Memory cleared! Fresh start.")
+
 
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = " ".join(context.args)
     if not query:
         await update.message.reply_text("Usage: /search IPL 2026 points table")
         return
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    await context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action="typing"
+    )
     await update.message.reply_text(f"Searching web for: {query}...")
     search_context = get_web_results(query)
     if not search_context:
@@ -140,31 +150,44 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(e)
         await update.message.reply_text("Something went wrong. Try again!")
 
+
 async def ai_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id   = update.effective_user.id
     user_name = update.effective_user.first_name
     user_text = update.message.text
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+
+    await context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action="typing"
+    )
+
     search_context = ""
     if any(w in user_text.lower() for w in LIVE_KEYWORDS):
         await update.message.reply_text("Searching web for latest info...")
         search_context = get_web_results(user_text)
+
     chat_history[user_id].append({"role": "user", "content": user_text})
     history = chat_history[user_id][-10:]
+
     try:
         reply = ask_groq(user_name, history, search_context)
         chat_history[user_id].append({"role": "assistant", "content": reply})
         await update.message.reply_text(reply)
     except Exception as e:
         logging.error(f"Error: {e}")
-        await update.message.reply_text("Sorry something went wrong. Please try again!")
+        await update.message.reply_text(
+            "Sorry something went wrong. Please try again!"
+        )
+
 
 def main():
     print("Smart AI Bot starting...")
     print(f"Today: {TODAY}")
     print("Groq + Tavily active!")
 
-    PORT = int(os.getenv("PORT", 10000))
+    # Validate env vars early so Render logs show a clear error
+    for var in ("BOT_TOKEN", "GROQ_API_KEY", "TAVILY_API_KEY", "WEBHOOK_URL"):
+        if not os.getenv(var):
+            raise ValueError(f"Missing environment variable: {var}")
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start",  start))
@@ -173,16 +196,20 @@ def main():
     app.add_handler(CommandHandler("search", search_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_reply))
 
-    print(f"Webhook mode -> port {PORT}")
-    print(f"Webhook URL  -> {WEBHOOK_URL}/{BOT_TOKEN}")
+    webhook_path = BOT_TOKEN
+    full_webhook = f"{WEBHOOK_URL}/{webhook_path}"
+
+    print(f"Listening on port : {PORT}")
+    print(f"Webhook URL       : {full_webhook}")
 
     app.run_webhook(
         listen="0.0.0.0",
         port=PORT,
-        url_path=BOT_TOKEN,
-        webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}",
-        drop_pending_updates=True
+        url_path=webhook_path,
+        webhook_url=full_webhook,
+        drop_pending_updates=True,
     )
+
 
 if __name__ == "__main__":
     main()
