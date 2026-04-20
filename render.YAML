@@ -3,7 +3,7 @@ services:
     name: telegram-ai-bot
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python bot_render.py
+    startCommand: python bot.py
     envVars:
       - key: BOT_TOKEN
         sync: false
